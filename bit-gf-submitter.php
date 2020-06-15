@@ -64,8 +64,19 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
     * Add Deactrivation warning to Plugins Page.
     */
    public function plugin_deactivate_warning( $links ) {
-       $links[] = '<p>Re-assign existing orders before Deactivating.</p>';
-       return $links;
+      $args = array(
+          'status' => array( 'gf-errart', 'gf-errapi' ),
+          'limit' => 5,
+          'orderby' => 'date',
+          'order' => 'ASC',
+          'return' => 'ids',
+       );
+       $orders = wc_get_orders( $args );
+
+       if ( count( $orders ) >0 ) {
+           $links[] = '<p>Re-assign existing orders before Deactivating.</p>';
+       }
+           return $links;
    }
 
    /**

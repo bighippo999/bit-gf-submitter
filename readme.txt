@@ -31,3 +31,4 @@ For use with BlackIce systems and automation. Untested/unsupported for other sys
 = 0.1 =
 * Initial setup of plugin directory structure.
 * Create GIT repository
+* Add queue check to Deactivation warning.
