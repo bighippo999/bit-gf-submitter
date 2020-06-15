@@ -1,0 +1,6 @@
+/* Bright Red Needs immediate action or query on order */
+.order-status.status-gf-errart,
+.order-status.status-gf-errapi{
+    background: #ff3737;
+    color: #fff;
+}
