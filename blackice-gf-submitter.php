@@ -40,6 +40,24 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
 
         // register our hook for the scheduler to check the processing queue.
         add_action( 'bit_gf_submitter_schedule_event', array($this, 'check_processing_queue') );
+
+        // Add the Bulk Action for Manually Submit GF Orders.
+        add_filter( 'bulk_actions-edit-shop_order', array( $this, 'bulk_action_menu' ) );
+        add_filter( 'handle_bulk_actions-edit-shop_order', array( $this, 'bulk_action_gf_submit' ), 10, 3 );
+        add_action( 'admin_notices', array( $this, 'bulk_action_admin_notices' ) );
+
+        // Print File Check for Variation Meta Data
+        add_action( 'woocommerce_variation_options_pricing', array( $this, 'add_custom_field_to_variations'), 10, 3 );
+        add_action( 'woocommerce_save_product_variation', array( $this, 'save_custom_field_to_variatons'), 10, 2 );
+    }
+
+    /**
+     * Captains Log
+     */
+    public function log_it( $level, $message ) {
+        $logger = wc_get_logger();
+        $context = array( 'source' => 'blackice-gf-submitter' );
+        $logger->$level( $message, $context);
     }
 
     /**
@@ -101,7 +119,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
    }
 
    /**
-    * Register WooCommerce Statuses for each Supplier in Attributes>Suppliers
+    * Register WooCommerce Statuses for GF (Missing Artwork) and (Failed Submission)
     */
    public function register_woocommerce_statuses( $order_statuses ) {
        $order_statuses['wc-gf-errart'] = array(
@@ -125,13 +143,98 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
    }
 
    /**
-    * For Each Supplier in Attributes>Suppliers show Order Status in Admin and in the Dropdown on Single Order
+    * For Each Status Missing & Failed, show Order Status in Admin and in the Dropdown on Single Order
     */
    public function show_order_status_admin_dropdown( $order_statuses ) {
        $order_statuses['wc-gf-errart'] = _x( 'GF (Missing Artwork)', 'Order status', 'woocommerce' );
        $order_statuses['wc-gf-errapi'] = _x( 'GF (Failed Submission)', 'Order status', 'woocommerce' );
 
        return $order_statuses;
+   }
+
+
+   /**
+    * Add new Bulk Action to drop-down menus.
+    */
+   public function bulk_action_menu( $bulk_array ) {
+       $bulk_array['act-man-gf-submit'] = __('Submit GF Order(s)', 'bit-gf-submitter');
+       return $bulk_array;
+   }
+
+   /**
+    * Handler for the New GF Submit Bulk Action.
+    */
+   public function bulk_action_gf_submit( $redirect, $doaction, $object_ids ) {
+
+       // let's remote query ars first
+       $redirect = remove_query_arg( array( 'act-man-gf-submit','gf_sub_success', 'gf_sub_missing', 'gf_sub_failed', ), $redirect );
+
+       if ( $doaction == 'act-man-gf-submit' ) {
+           $this->log_it( "info", "Performing Bulk Action for act-man-gf-submit" );
+           $bulk_success_counter = 0;
+           $bulk_missing_counter = 0;
+           $bulk_failed_counter = 0;
+
+           foreach( $object_ids as $order_id ) {
+               $this->log_it( "debug", "Performing Bulk Action on order " . $order_id . "." );
+               $order = wc_get_order( $order_id );
+
+               $status = $this->submit_order( $order );
+               if ( $status == "success") {
+               $this->log_it( "debug", "Result: success" );
+                   $bulk_success_counter++;
+               } elseif ( $status == "missing" ) {
+               $this->log_it( "debug", "Result: missing" );
+                   $bulk_missing_counter++;
+               } else {
+               $this->log_it( "debug", "Result: failed" );
+                   $bulk_failed_counter++;
+               }
+           }
+           if ( $bulk_success_counter > 0 ) { $redirect = add_query_arg( array( 'gf_sub_success' => $bulk_success_counter ), $redirect ); };
+           if ( $bulk_missing_counter > 0 ) { $redirect = add_query_arg( array( 'gf_sub_missing' => $bulk_missing_counter ), $redirect ); };
+           if ( $bulk_failed_counter > 0 ) { $redirect = add_query_arg( array( 'gf_sub_failed' => $bulk_failed_counter ), $redirect ); };
+       } // end if
+
+       return $redirect;
+
+   } // end function
+
+   /**
+    * Bulk Admin Notices
+    */
+   public function bulk_action_admin_notices() {
+       if ( ! empty( $_REQUEST['gf_sub_success'] ) || ! empty( $_REQUEST['gf_sub_missing'] ) || ! empty( $_REQUEST['gf_sub_failed'] ) ) {
+           $bulk_success_counter = isset( $_REQUEST['gf_sub_success']) ? $_REQUEST['gf_sub_success'] : 0;
+           $bulk_missing_counter = isset( $_REQUEST['gf_sub_missing']) ? $_REQUEST['gf_sub_missing'] : 0;
+           $bulk_failed_counter = isset( $_REQUEST['gf_sub_failed']) ? $_REQUEST['gf_sub_failed'] : 0;
+
+           if ( $bulk_success_counter > 0 ) { printf( '<div id="message" class="updated notice notice-success is-dismissible"><p>' . _n( '%s order has been Successfully Submit to GiftFlow.', '%s orders have been Successfully Submit to GiftFlow', intval( $bulk_success_counter ) ) . '</p></div>', intval( $bulk_success_counter ) ); };
+           if ( $bulk_missing_counter > 0 ) { printf( '<div id="message" class="notice notice-warning is-dismissible"><p>' . _n( '%s order has Missing Artwork and NOT Submit to GiftFlow.', '%s orders have Missing Artwork and NOT Submit to GiftFlow', intval( $bulk_missing_counter ) ) . '</p></div>', intval( $bulk_missing_counter ) ); };
+           if ( $bulk_failed_counter > 0 ) { printf( '<div id="message" class="notice notice-error is-dismissible"><p>' . _n( '%s order has Failed Submission to GiftFlow.', '%s orders have Failed Submission to GiftFlow', intval( $bulk_failed_counter ) ) . '</p></div>', intval( $bulk_failed_counter ) ); };
+       }
+   } // end function
+
+   /**
+    * Display Print File Last Confirmed meta data on Variations
+    */
+   public function add_custom_field_to_variations( $loop, $variation_data, $variation ) {
+       printf( '<div class="form-field form-row form-row-full custom-field">' );
+       woocommerce_wp_text_input( array(
+           'id' => 'printfilevalid[' . $loop . ']',
+           'class' => 'short',
+           'label' => __( 'Print File Last Confirmed', 'woocommerce' ),
+           'value' => get_post_meta( $variation->ID, 'printfilevalid', true )
+       ) );
+       printf( '</div">' );
+   }
+
+   /**
+    * Save Print File Last Confirmed meta data for Variations
+    */
+   public function save_custom_field_to_variatons( $variation_id, $i ) {
+       $custom_field = $_POST['printfilevalid'][$i];
+       if ( isset( $custom_field ) ) update_post_meta( $variation_id, 'printfilevalid', esc_attr( $custom_field ) );
    }
 
    /**
@@ -148,7 +251,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        );
        $orders = wc_get_orders( $args );
        foreach ( $orders as $order ) {
-           $this->submit_order( $order );
+           $status = $this->submit_order( $order );
        }
    }
 
@@ -158,6 +261,79 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
    public function submit_order( $order ) {
        if ( ! $order ) {
            return;
+       }
+
+       $order_items = $order->get_items();
+
+       foreach ( $order_items as $item_id => $item ) {
+           $parent_id = "";
+           $product = $item->get_product();
+           $product_type = $product->get_type();
+           switch ( $product_type ) {
+               case 'simple':
+                   $product_id = $product->get_id();
+                   $product_name = $product->get_name();
+                   $product_sku = $product->get_sku();
+                   $productattrib = wc_get_product_terms( $product_id, 'pa_supplier', array( 'fields' => 'slugs' ) );
+                   // check the meta data on the variation or product to see if the image has been marked as available.
+                   $printfilechecked = $product->get_meta_data();
+                   break;
+               case 'variation':
+                   $parent_id = $product->get_parent_id();
+                   $product_id = $product->get_id();
+                   $product_name = $product->get_name();
+                   $product_sku = $product->get_sku();
+                   $productattrib = wc_get_product_terms( $parent_id, 'pa_supplier', array( 'fields' => 'slugs' ) );
+                   break;
+               default:
+                   $product_id = $product->get_id();
+                   $product_name = $product->get_name();
+                   $product_sku = $product->get_sku();
+                   $productattrib = wc_get_product_terms( $product_id, 'pa_supplier', array( 'fields' => 'slugs' ) );
+                   break;
+           } // end switch
+//           $this->log_it( "debug", "Product Title: " . implode(",", $product_titles ) );
+           $this->log_it( "debug", "Product Title: " . $product_name );
+           $this->log_it( "debug", "Product Type: " . $product_type );
+           $this->log_it( "debug", "Product ID: " . $product_id );
+           if ( $parent_id ) { $this->log_it( "debug", "Parent ID: " . $parent_id ); };
+           $this->log_it( "debug", "Product SKU: " . $product_sku );
+
+           $this->log_it( "debug", "Product Suppliers: " . implode(", ", $productattrib) );
+           // check GiftFlow is a valid supplier for this item.
+           if ( in_array( "gf", $productattrib) ) {
+               $this->log_it( "debug", "GiftFlow is a Valid Supplier. Processing Item." );
+               // Check the Print File is Valid.
+
+               $printfilelastchecked = get_post_meta( $product_id, 'printfilevalid', true );
+               $this->log_it( "debug", "printfilevalid meta: " . $printfilelastchecked );
+               $now = new DateTime();
+               $metadate = strtotime($printfilelastchecked);
+               $checkdate = new DateTime();
+               $checkdate->setTimeStamp($metadate);
+               $postmetaplus30 = date_add($checkdate, date_interval_create_from_date_string ("6 hours" ) );
+               $this->log_it( "debug", "Now: " . $now->format('Y-m-d H:i:s') );
+               $this->log_it( "debug", "Plus30 : " . $postmetaplus30->format('Y-m-d H:i:s') );
+               if ( $now < $checkdate ) {
+                   $this->log_it( "debug", "Print File Checked in the last 6 hours. Skipping Check." );
+
+               } else {
+                   $datetime = date("Y-m-d H:i:s");
+                   $this->log_it( "debug", "Print File Expired. Updating printfilevalid meta: " . $datetime );
+                   update_post_meta( $product_id, 'printfilevalid', $datetime );
+               }
+
+
+           } else {
+               $this->log_it( "debug", "NOT a GiftFlow Item. Skipping." );
+           }
+
+       }
+
+       if ( $order->status == "gf-rexp") {
+           return "success";
+       } else {
+           return "failed";
        }
 
    }
