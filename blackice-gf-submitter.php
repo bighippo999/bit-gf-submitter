@@ -23,8 +23,13 @@ if ( ! defined( 'WPINC' ) ) {
 if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
  class BIT_GF_Submitter {
 
-    public function __construct() {
+    var $baseurl;
+    var $printfilevalidduration;
 
+    public function __construct() {
+//        $this->baseurl = "https://printimages.blackicetrading.com/printfiles/";
+        $this->baseurl = "https://www.blackicetrading.com/printfiles/";
+        $this->printfilevalidduration = "6 hours";
     }
 
     public function init() {
@@ -304,24 +309,8 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            if ( in_array( "gf", $productattrib) ) {
                $this->log_it( "debug", "GiftFlow is a Valid Supplier. Processing Item." );
                // Check the Print File is Valid.
-
-               $printfilelastchecked = get_post_meta( $product_id, 'printfilevalid', true );
-               $this->log_it( "debug", "printfilevalid meta: " . $printfilelastchecked );
-               $now = new DateTime();
-               $metadate = strtotime($printfilelastchecked);
-               $checkdate = new DateTime();
-               $checkdate->setTimeStamp($metadate);
-               $postmetaplus30 = date_add($checkdate, date_interval_create_from_date_string ("6 hours" ) );
-               $this->log_it( "debug", "Now: " . $now->format('Y-m-d H:i:s') );
-               $this->log_it( "debug", "Plus30 : " . $postmetaplus30->format('Y-m-d H:i:s') );
-               if ( $now < $checkdate ) {
-                   $this->log_it( "debug", "Print File Checked in the last 6 hours. Skipping Check." );
-
-               } else {
-                   $datetime = date("Y-m-d H:i:s");
-                   $this->log_it( "debug", "Print File Expired. Updating printfilevalid meta: " . $datetime );
-                   update_post_meta( $product_id, 'printfilevalid', $datetime );
-               }
+               $printfileurl = $this->convert_sku_to_printfileurl( $product_sku  );
+               $printfilevalid = $this->check_print_file_valid( $product_id, $printfileurl);
 
 
            } else {
@@ -336,6 +325,85 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            return "failed";
        }
 
+   }
+
+   /**
+    * Convert SKU to printfile URL
+    */
+   public function convert_sku_to_printfileurl( $sku ) {
+
+      $skuregex = "/^([a-zA-z]+[0-9]+)/i";
+      preg_match( $skuregex, $sku, $matches );
+      if ( $matches ) {
+          $url = $this->baseurl . strtoupper($matches[1]) . "/" . strtoupper($sku) . ".png";
+          $this->log_it( "debug", "SKU: " . $sku . " URL: " . $url );
+          return $url;
+      }
+      return false;
+   }
+
+   /**
+    * Check if printfile cached/valid.
+    */
+   public function check_print_file_valid( $product_id, $printfileurl ) {
+
+       $printfilelastchecked = get_post_meta( $product_id, 'printfilevalid', true );
+       $now = new DateTime();
+       $metadate = strtotime($printfilelastchecked);
+       $checkdate = new DateTime();
+       $checkdate->setTimeStamp($metadate);
+       $postmetaplustime = date_add($checkdate, date_interval_create_from_date_string ( $this->printfilevalidduration ) );
+       $this->log_it( "debug", "Print File Meta: " . $printfilelastchecked . " Valid Until: " . $postmetaplustime->format('Y-m-d H:i:s') . " Now: " . $now->format('Y-m-d H:i:s') );
+       if ( $now < $checkdate ) {
+           $this->log_it( "debug", "Print File Checked in the last " . $this->printfilevalidduration . ". Skipping Check." );
+           return true;
+       } else {
+           $datetime = date("Y-m-d H:i:s");
+           $this->log_it( "debug", "Print File Expired. Checking it... " );
+           $printfilevalid = $this->check_image_url( $printfileurl );
+           if ( $printfilevalid ) {
+               $this->log_it( "debug", "Print File Validated. Updating Meta Data Info. Valid for another " . $this->printfilevalidduration . "." );
+               update_post_meta( $product_id, 'printfilevalid', $datetime );
+               return true;
+           } else {
+               $this->log_it( "debug", "Print File NOT Valid." );
+               return false;
+           }
+       }
+       return false;
+   }
+
+   /**
+    * Check image url valid
+    */
+   public function check_image_url( $url ) {
+       // Remove all illegal characters from a url
+       $url = filter_var($url, FILTER_SANITIZE_URL);
+
+       // Validate url
+       $this->log_it( "debug", "Validating Image URL: " . $url );
+       if (filter_var($url, FILTER_VALIDATE_URL)) {
+           $ch = curl_init();
+           curl_setopt($ch, CURLOPT_URL,$url);
+           // don't download content
+           curl_setopt($ch, CURLOPT_NOBODY, 1);
+           curl_setopt($ch, CURLOPT_FAILONERROR, 1);
+           curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+           curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)');
+
+           $result = curl_exec($ch);
+           curl_close($ch);
+           if($result !== FALSE) {
+               $this->log_it( "info", "Image URL Valid: " . $url );
+               return true;
+           } else {
+               $this->log_it( "warning", "Image URL INVALID: " . $url );
+               return false;
+           }
+       } else {
+               $this->log_it( "error", "Error when processing Image URL: " . $url );
+           return false;
+       }
    }
 
  }
