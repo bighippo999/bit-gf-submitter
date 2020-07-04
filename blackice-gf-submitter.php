@@ -255,7 +255,9 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
           'return' => 'ids',
        );
        $orders = wc_get_orders( $args );
-       foreach ( $orders as $order ) {
+       foreach ( $orders as $order_id ) {
+           $this->log_it( "debug", "Performing GF Scheduled Action on order " . $order_id . "." );
+           $order = wc_get_order( $order_id );
            $status = $this->submit_order( $order );
        }
    }
@@ -270,6 +272,8 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
 
        $order_items = $order->get_items();
 
+       $missingprintfiles = [];
+       $errorsubmitting = "";
        foreach ( $order_items as $item_id => $item ) {
            $parent_id = "";
            $product = $item->get_product();
@@ -311,14 +315,19 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
                // Check the Print File is Valid.
                $printfileurl = $this->convert_sku_to_printfileurl( $product_sku  );
                $printfilevalid = $this->check_print_file_valid( $product_id, $printfileurl);
-
-
+               if ( ! $printfilevalid ) {
+                   $missingprintfiles[] = $printfileurl;
+               }
            } else {
                $this->log_it( "debug", "NOT a GiftFlow Item. Skipping." );
            }
 
        }
-
+       if ( count($missingprintfiles) > 0 ) {
+           $this->log_it( "debug", count($missingprintfiles) . " Item(s) missing artwork.");
+           $order->update_status ( "gf-errart", count($missingprintfiles) . " Item(s) missing artwork." );
+           return "missing";
+       }
        if ( $order->status == "gf-rexp") {
            return "success";
        } else {
