@@ -256,7 +256,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        );
        $orders = wc_get_orders( $args );
        foreach ( $orders as $order_id ) {
-           $this->log_it( "debug", "Performing GF Scheduled Action on order " . $order_id . "." );
+           $this->log_it( "info", "Performing GF Scheduled Action on order " . $order_id . "." );
            $order = wc_get_order( $order_id );
            $status = $this->submit_order( $order );
        }
@@ -270,13 +270,18 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            return;
        }
 
+       $submitting_items = [];
+
        $order_items = $order->get_items();
+       $not_gf_items = 0;
+       $is_gf_items = 0;
 
        $missingprintfiles = [];
        $errorsubmitting = "";
        foreach ( $order_items as $item_id => $item ) {
            $parent_id = "";
            $product = $item->get_product();
+           $quantity = $item->get_quantity();
            $product_type = $product->get_type();
            switch ( $product_type ) {
                case 'simple':
@@ -317,18 +322,93 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
                $printfilevalid = $this->check_print_file_valid( $product_id, $printfileurl);
                if ( ! $printfilevalid ) {
                    $missingprintfiles[] = $printfileurl;
+               } else {
+                   $is_gf_items++;
+                   $submitting_this_item = [];
+                   $submitting_this_item['productSku'] = "";
+                   $submitting_this_item['customerProductReference'] = $product_sku;
+                   $submitting_this_item['customerProductName'] = $product_name;
+                   $submitting_this_item['customerProductDescription'] = "";
+                   $submitting_this_item['quantity'] = $quantity;
+                   $submitting_this_item['partNumber'] = $is_gf_items;
+                   $submitting_this_item['itemAssetDetails'] = array( 'itemAssetUrl' => $printfileurl );
+
+                   $this->log_it( "debug", "Adding Item No. " . $is_gf_items . " to Items list." );
+                   $submitting_items[] = $submitting_this_item;
                }
+
            } else {
                $this->log_it( "debug", "NOT a GiftFlow Item. Skipping." );
+               $not_gf_items++;
            }
 
+       } // end foreach ( $order_items as $item_id => $item )
+
+       // loop again to add the totalParts count.
+       $total_items = count( $submitting_items );
+       $this->log_it( "debug", "Total Items Submitting: " . $total_items . ". Total Items NOT Submitting: " . $not_gf_items);
+       foreach ( $submitting_items as $k => $v ) {
+           $submitting_items[$k]['totalParts'] = $total_items;
+           $this->log_it( "debug", "Test debug: " . $the_item);
        }
+
+       
        if ( count($missingprintfiles) > 0 ) {
            $this->log_it( "debug", count($missingprintfiles) . " Item(s) missing artwork.");
            $order->update_status ( "gf-errart", count($missingprintfiles) . " Item(s) missing artwork." );
            return "missing";
        }
        if ( $order->status == "gf-rexp") {
+           $the_submission = [];
+           $the_submission['resellerName'] = 'BlackIce Trading Ltd';
+           $the_submission['resellerPhoneNumber'] = '123456';
+           $the_submission['resellerEmailAddress'] = 'jodi@blackicetrading.com';
+           $the_submission['utcResellerOrderTimestampDateTime'] = $order->get_date_completed();
+           $the_submission['resellerOrderNumber'] = $order->get_order_number();
+
+           $the_submission['customerName'] = $order->get_billing_first_name() . " " . $order->get_billing_last_name();
+           if ( $order->get_billing_company() != "" ) {
+               $the_submission['customerAddressLineOne'] = $order->get_billing_company();
+               $the_submission['customerAddressLineTwo'] = $order->get_billing_address_1() . ", " . $order->get_billing_address_2();
+           } else {
+               $the_submission['customerAddressLineOne'] = $order->get_billing_address_1();
+               $the_submission['customerAddressLineTwo'] = $order->get_billing_address_2();
+           }
+           $the_submission['customerAddressTown'] = $order->get_billing_city();
+           $the_submission['customerAddressCounty'] = $order->get_billing_state();
+           $the_submission['customerAddressPostcode'] = $order->get_billing_postcode();
+           $the_submission['customerAddressCountry'] = $order->get_billing_country();
+           $the_submission['shippingTo'] = $order->get_shipping_first_name() . " " . $order->get_shipping_last_name();
+           if ( $order->get_shipping_company() != "" ) {
+               $the_submission['shippingAddressLineOne'] = $order->get_shipping_company();
+               $the_submission['shippingAddressLineTwo'] = $order->get_shipping_address_1() . ", " . $order->get_shipping_address_2();
+           } else {
+               $the_submission['shippingAddressLineOne'] = $order->get_shipping_address_1();
+               $the_submission['shippingAddressLineTwo'] = $order->get_shipping_address_2();
+           }
+           $the_submission['shippingAddressTown'] = $order->get_shipping_city();
+           $the_submission['shippingAddressCounty'] = $order->get_shipping_state();
+           $the_submission['shippingAddressPostcode'] = $order->get_shipping_postcode();
+           $the_submission['shippingAddressCountry'] = $order->get_shipping_country();
+           $the_submission['shippingAddressCountryCode'] = $order->get_shipping_country();
+
+           $the_submission['items'] = $submitting_items;
+
+           $submiturl = "https://653222e384157ae04ba8fd79bb11068d.m.pipedream.net";
+
+           $curl = curl_init();
+           curl_setopt($curl, CURLOPT_URL, $submiturl);
+           curl_setopt($curl, CURLOPT_HTTPHEADER, array(
+               'APIKEY: 111111111111111111111',
+               'Content-Type: application/json',
+           ));
+           curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
+           curl_setopt($curl, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+           curl_setopt($curl, CURLOPT_POST, 1);
+           curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($the_submission));
+           $output = curl_exec($curl);
+           curl_close($curl);
+           
            return "success";
        } else {
            return "failed";
