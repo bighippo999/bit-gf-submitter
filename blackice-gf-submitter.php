@@ -37,7 +37,24 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
         $this->printfiles_url = isset($options['printfiles_url']) ? $options['printfiles_url'] : 'https://www.blackicetrading.com/printfiles/';
         $this->printfiles_cache_timeout = isset($options['printfiles_cache_timeout']) ? $options['printfiles_cache_timeout'] : '6 hours';
 
-        $this->sku_lookup_convert = isset($options['sku_lookup_convert']) ? $options['sku_lookup_convert'] : '';
+        $this->sku_lookup_convert_raw = isset($options['sku_lookup_convert']) ? $options['sku_lookup_convert'] : '';
+        $this->sku_lookup_convert = $this->convert_sku_lookup_data_to_array( $this->sku_lookup_convert_raw );
+    }
+
+    public function convert_sku_lookup_data_to_array( $data ) {
+        $separator = "\r\n";
+        $line = strtok( $data, $separator );
+        $skus = [];
+        $skuregex = "/(.*) (.*)/im";
+        while ( $line !== false ) {
+            # do somthing
+            preg_match( $skuregex, $line, $matches );
+            if ( $matches ) {
+                $skus[$matches[1]] = $matches[2];
+            }
+            $line = strtok( $separator );
+        }
+        return $skus;
     }
 
     public function init() {
@@ -64,7 +81,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
         add_action( 'woocommerce_save_product_variation', array( $this, 'save_custom_field_to_variatons'), 10, 2 );
 
         // register out settings_init to the admin_init action hook.
-        add_action( 'admin_menu', array( $this, 'register_submenu_page' ) );
+        add_action( 'admin_menu', array( $this, 'register_submenu_page' ), 60 );
         add_action( 'admin_init', array( $this, 'settings_init' ) );
     }
 
@@ -72,7 +89,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
      * Submenu
      */
     public function register_submenu_page() {
-        add_submenu_page( 'woocommerce', 'GF Submitter', 'GF Submitter', 'manage_options', 'gf_submitter-submenu-page', array( $this, 'options_page_cb' ) );
+        add_submenu_page( 'woocommerce', 'GF Submitter', 'GF Submitter', 'manage_options', 'gf_submitter-submenu-page', array( $this, 'options_page_cb' ), 60 );
     }
 
     /**
@@ -305,8 +322,10 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
      * textarea_field_sku_lookup_convert_render
      */
     public function textarea_field_sku_lookup_convert_render() {
+        echo count($this->sku_lookup_convert) . ' Lookup(s) currently in array.';
         ?>
-        <textarea name='bit-gf-submitter_settings[sku_lookup_convert]' rows="15" cols="80"><?php echo $this->sku_lookup_convert; ?></textarea>
+        <br />
+        <textarea name='bit-gf-submitter_settings[sku_lookup_convert]' rows="15" cols="80"><?php echo $this->sku_lookup_convert_raw; ?></textarea>
         <?php
     }
 
@@ -328,7 +347,11 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
      * sku_lookup_convert_section_callback
      */
     public function sku_lookup_convert_section_cb () {
-        echo __( 'One line per lookup/coversion. separated by a {space}', 'bit-gf-submitter' );
+        echo __( 'One line per lookup/coversion. separated by a {space}. Case insensitive.', 'bit-gf-submitter' );
+        echo "<br />";
+        echo __( 'Warning: Partial matches should NOT exist! eg a lookup for SPC1AP11 and SPC1.', 'bit-gf-submitter' );
+        echo "<br />";
+        echo __( 'testing required on partial variations. SPC1AP11 and SPC1AP11MAX. I think the array keys will be specific and should only match whole sku.', 'bit-gf-submitter' );
     }
 
     /**
@@ -552,6 +575,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        $is_gf_items = 0;
 
        $missingprintfiles = [];
+       $missingproductcode = [];
        $errorsubmitting = "";
        foreach ( $order_items as $item_id => $item ) {
            $parent_id = "";
@@ -599,17 +623,23 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
                    $missingprintfiles[] = $printfileurl;
                } else {
                    $is_gf_items++;
-                   $submitting_this_item = [];
-                   $submitting_this_item['productSku'] = "";
-                   $submitting_this_item['customerProductReference'] = $product_sku;
-                   $submitting_this_item['customerProductName'] = $product_name;
-                   $submitting_this_item['customerProductDescription'] = "";
-                   $submitting_this_item['quantity'] = $quantity;
-                   $submitting_this_item['partNumber'] = $is_gf_items;
-                   $submitting_this_item['itemAssetDetails'] = array( 'itemAssetUrl' => $printfileurl );
+                   $product_code = $this->convert_sku_to_gf_product_code( $product_sku );
+                   if ( $product_code ) {
+                       $submitting_this_item = [];
+                       $submitting_this_item['productSku'] = $product_code;
+                       $submitting_this_item['customerProductReference'] = $product_sku;
+                       $submitting_this_item['customerProductName'] = $product_name;
+                       $submitting_this_item['customerProductDescription'] = "";
+                       $submitting_this_item['quantity'] = $quantity;
+                       $submitting_this_item['partNumber'] = $is_gf_items;
+                       $submitting_this_item['itemAssetDetails'] = array( 'itemAssetUrl' => $printfileurl );
 
-                   $this->log_it( "debug", "Adding Item No. " . $is_gf_items . " to Items list." );
-                   $submitting_items[] = $submitting_this_item;
+                       $this->log_it( "debug", "Adding Item No. " . $is_gf_items . " to Items list." );
+                       $submitting_items[] = $submitting_this_item;
+                   } else {
+                       $missingproductcode[] = $product_sku;
+                       $this->log_it( "error", "Unable to link sku to product code. Aborting submission!" );
+                   }
                }
 
            } else {
@@ -628,9 +658,14 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        }
 
 
-       if ( count($missingprintfiles) > 0 ) {
+       if ( count($missingprintfiles) > 0) {
            $this->log_it( "debug", count($missingprintfiles) . " Item(s) missing artwork.");
            $order->update_status ( "gf-errart", count($missingprintfiles) . " Item(s) missing artwork." );
+           return "missing";
+       }
+       if ( count($missingproductcode) > 0) {
+           $this->log_it( "debug", count($missingproductcode) . " Item(s) unable to link to GF Product(s).");
+           $order->update_status ( "gf-errapi", count($missingproductcode) . " Item(s) unable to link to GF Product(s)." );
            return "missing";
        }
        if ( $order->status == "gf-rexp") {
@@ -703,6 +738,22 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
           return $url;
       }
       return false;
+   }
+
+   /**
+    * Convert the SKU to GF Product Code
+    */
+   public function convert_sku_to_gf_product_code ($sku ) {
+       $skuregex = "/^([a-zA-Z]+[0-9]+)(.*)/i";
+       preg_match( $skuregex, $sku, $matches );
+       $product_code = $this->sku_lookup_convert[$matches[2]];
+       if ( $product_code ) {
+           $this->log_it( "debug", "SKU: " . $sku . " Product Code: " . $product_code );
+           return $product_code;
+       } else {
+           $this->log_it( "warning", "SKU: " . $sku . " Has no corresponding Product Code!" );
+           return false;
+       }
    }
 
    /**
