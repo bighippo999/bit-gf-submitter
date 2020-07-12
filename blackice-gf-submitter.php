@@ -23,13 +23,21 @@ if ( ! defined( 'WPINC' ) ) {
 if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
  class BIT_GF_Submitter {
 
-    var $baseurl;
-    var $printfilevalidduration;
-
     public function __construct() {
-//        $this->baseurl = "https://printimages.blackicetrading.com/printfiles/";
-        $this->baseurl = "https://www.blackicetrading.com/printfiles/";
-        $this->printfilevalidduration = "6 hours";
+        $options = get_option( 'bit-gf-submitter_settings' );
+        $this->api_busines_name = isset($options['api_business_name']) ? $options['api_business_name'] : '';
+        $this->api_business_phone_number = isset($options['api_business_phone_number']) ? $options['api_business_phone_number'] : '';
+        $this->api_business_email = isset($options['api_business_email']) ? $options['api_business_email'] : '';
+        $this->api_order_prefix = isset($options['api_order_prefix']) ? $options['api_order_prefix'] : '';
+        $this->api_key = isset($options['api_key']) ? $options['api_key'] : '';
+        $this->api_secret = isset($options['api_secret']) ? $options['api_secret'] : '';
+        $this->api_id = isset($options['api_id']) ? $options['api_id'] : '';
+        $this->api_endpoint = isset($options['api_endpoint']) ? $options['api_endpoint'] : 'https://653222e384157ae04ba8fd79bb11068d.m.pipedream.net';
+
+        $this->printfiles_url = isset($options['printfiles_url']) ? $options['printfiles_url'] : 'https://www.blackicetrading.com/printfiles/';
+        $this->printfiles_cache_timeout = isset($options['printfiles_cache_timeout']) ? $options['printfiles_cache_timeout'] : '6 hours';
+
+        $this->sku_lookup_convert = isset($options['sku_lookup_convert']) ? $options['sku_lookup_convert'] : '';
     }
 
     public function init() {
@@ -54,6 +62,273 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
         // Print File Check for Variation Meta Data
         add_action( 'woocommerce_variation_options_pricing', array( $this, 'add_custom_field_to_variations'), 10, 3 );
         add_action( 'woocommerce_save_product_variation', array( $this, 'save_custom_field_to_variatons'), 10, 2 );
+
+        // register out settings_init to the admin_init action hook.
+        add_action( 'admin_menu', array( $this, 'register_submenu_page' ) );
+        add_action( 'admin_init', array( $this, 'settings_init' ) );
+    }
+
+    /**
+     * Submenu
+     */
+    public function register_submenu_page() {
+        add_submenu_page( 'woocommerce', 'GF Submitter', 'GF Submitter', 'manage_options', 'gf_submitter-submenu-page', array( $this, 'options_page_cb' ) );
+    }
+
+    /**
+     * Submenu callback page generation
+     */
+    public function options_page_cb() {
+        ?>
+        <form action='options.php' method='post'>
+            <h2>GF Submitter Settings</h2>
+
+            <?php
+            settings_fields( 'bit_gf_pluginPage' );
+            do_settings_sections( 'bit_gf_pluginPage' );
+            submit_button();
+            ?>
+        </form>
+        <?php
+    }
+
+    /**
+     * settings page init
+     */
+    public function settings_init() {
+
+        register_setting( 'bit_gf_pluginPage', 'bit-gf-submitter_settings' );
+
+        add_settings_section(
+            'bit_gf_core_section',
+            __( 'GF Core settings', 'bit-gf-submitter' ),
+            array( $this, 'settings_section_cb' ),
+            'bit_gf_pluginPage'
+        );
+
+        add_settings_field(
+            'text_field_business_name',
+            __( 'Business Name', 'bit-gf-submitter' ),
+            array( $this, 'text_field_business_name_render' ),
+            'bit_gf_pluginPage',
+            'bit_gf_core_section'
+        );
+
+        add_settings_field(
+            'text_field_business_phone_number',
+            __( 'Business Phone Number', 'bit-gf-submitter' ),
+            array( $this, 'text_field_business_phone_number_render' ),
+            'bit_gf_pluginPage',
+            'bit_gf_core_section'
+        );
+
+        add_settings_field(
+            'text_field_business_email',
+            __( 'Business Email', 'bit-gf-submitter' ),
+            array( $this, 'text_field_business_email_render' ),
+            'bit_gf_pluginPage',
+            'bit_gf_core_section'
+        );
+
+        add_settings_field(
+            'text_field_order_prefix',
+            __( 'Order Prefix', 'bit-gf-submitter' ),
+            array( $this, 'text_field_order_prefix_render' ),
+            'bit_gf_pluginPage',
+            'bit_gf_core_section'
+        );
+
+        add_settings_field(
+            'text_field_api_key',
+            __( 'API Key', 'bit-gf-submitter' ),
+            array( $this, 'text_field_api_key_render' ),
+            'bit_gf_pluginPage',
+            'bit_gf_core_section'
+        );
+
+        add_settings_field(
+            'text_field_api_secret',
+            __( 'API Secret', 'bit-gf-submitter' ),
+            array( $this, 'text_field_api_secret_render' ),
+            'bit_gf_pluginPage',
+            'bit_gf_core_section'
+        );
+
+        add_settings_field(
+            'text_field_api_id',
+            __( 'API ID', 'bit-gf-submitter' ),
+            array( $this, 'text_field_api_id_render' ),
+            'bit_gf_pluginPage',
+            'bit_gf_core_section'
+        );
+
+        add_settings_field(
+            'text_field_api_endpoint',
+            __( 'API EndPoint', 'bit-gf-submitter' ),
+            array( $this, 'text_field_api_endpoint_render' ),
+            'bit_gf_pluginPage',
+            'bit_gf_core_section'
+        );
+
+        add_settings_section(
+            'bit_gf_printfiles_section',
+            __( 'Print File settings', 'bit-gf-submitter' ),
+            array( $this, 'printfile_settings_section_cb' ),
+            'bit_gf_pluginPage'
+        );
+
+        add_settings_field(
+            'text_field_printfiles_url',
+            __( 'PrintFiles URL', 'bit-gf-submitter' ),
+            array( $this, 'text_field_printfiles_url_render' ),
+            'bit_gf_pluginPage',
+            'bit_gf_printfiles_section'
+        );
+
+        add_settings_field(
+            'text_field_printfiles_cache_timeout',
+            __( 'Printfiles Cache Timeout', 'bit-gf-submitter' ),
+            array( $this, 'text_field_printfiles_cache_timeout_render' ),
+            'bit_gf_pluginPage',
+            'bit_gf_printfiles_section'
+        );
+
+        add_settings_section(
+            'bit_gf_sku_conversion_section',
+            __( 'SKU Lookup/Convert', 'bit-gf-submitter' ),
+            array( $this, 'sku_lookup_convert_section_cb' ),
+            'bit_gf_pluginPage'
+        );
+
+        add_settings_field(
+            'textarea_field_sku_lookup_convert',
+            __( 'SKU\'s', 'bit-gf-submitter' ),
+            array( $this, 'textarea_field_sku_lookup_convert_render' ),
+            'bit_gf_pluginPage',
+            'bit_gf_sku_conversion_section'
+        );
+
+    }
+
+    /**
+     * text_field_business_name_render
+     */
+    public function text_field_business_name_render() {
+        ?>
+        <input type='text' name='bit-gf-submitter_settings[api_business_name]' value='<?php echo $this->api_busines_name; ?>'>
+        <?php
+    }
+
+    /**
+     * text_field_business_phone_number_render
+     */
+    public function text_field_business_phone_number_render() {
+        ?>
+        <input type='tel' name='bit-gf-submitter_settings[api_business_phone_number]' value='<?php echo $this->api_business_phone_number; ?>'>
+        <?php
+    }
+
+    /**
+     * text_field_business_email_render
+     */
+    public function text_field_business_email_render() {
+        ?>
+        <input type='email' name='bit-gf-submitter_settings[api_business_email]' value='<?php echo $this->api_business_email; ?>'>
+        <?php
+    }
+
+    /**
+     * text_field_order_prefix_render
+     */
+    public function text_field_order_prefix_render() {
+        ?>
+        <input type='text' name='bit-gf-submitter_settings[api_order_prefix]' value='<?php echo $this->api_order_prefix; ?>'>
+        <?php
+    }
+
+    /**
+     * text_field_api_key_render
+     */
+    public function text_field_api_key_render() {
+        ?>
+        <input type='text' name='bit-gf-submitter_settings[api_key]' value='<?php echo $this->api_key; ?>'>
+        <?php
+    }
+
+    /**
+     * text_field_api_secret_render
+     */
+    public function text_field_api_secret_render() {
+        ?>
+        <input type='text' name='bit-gf-submitter_settings[api_secret]' value='<?php echo $this->api_secret; ?>'>
+        <?php
+    }
+
+    /**
+     * text_field_api_id_render
+     */
+    public function text_field_api_id_render() {
+        ?>
+        <input type='text' name='bit-gf-submitter_settings[api_id]' value='<?php echo $this->api_id; ?>'>
+        <?php
+    }
+
+    /**
+     * text_field_api_endpoint_render
+     */
+    public function text_field_api_endpoint_render() {
+        ?>
+        <input type='url' name='bit-gf-submitter_settings[api_endpoint]' value='<?php echo $this->api_endpoint; ?>'>
+        <?php
+    }
+
+    /**
+     * text_field_printfiles_url_render
+     */
+    public function text_field_printfiles_url_render() {
+        ?>
+        <input type='url' name='bit-gf-submitter_settings[printfiles_url]' value='<?php echo $this->printfiles_url; ?>'>
+        <br \>
+        <?php
+    }
+
+    /**
+     * text_field_printfiles_cache_timeout_render
+     */
+    public function text_field_printfiles_cache_timeout_render() {
+        ?>
+        <input type='text' name='bit-gf-submitter_settings[printfiles_cache_timeout]' value='<?php echo $this->printfiles_cache_timeout; ?>'>
+        <?php
+    }
+
+    /**
+     * textarea_field_sku_lookup_convert_render
+     */
+    public function textarea_field_sku_lookup_convert_render() {
+        ?>
+        <textarea name='bit-gf-submitter_settings[sku_lookup_convert]' rows="15" cols="80"><?php echo $this->sku_lookup_convert; ?></textarea>
+        <?php
+    }
+
+    /**
+     * settings_section_callback
+     */
+    public function settings_section_cb () {
+        echo __( 'Settings obtained from GF. Make sure to fill in the correct details', 'bit-gf-submitter' );
+    }
+
+    /**
+     * printfile_settings_section_callback
+     */
+    public function printfile_settings_section_cb () {
+        echo __( 'Used to verify the Print File are available during submission', 'bit-gf-submitter' );
+    }
+
+    /**
+     * sku_lookup_convert_section_callback
+     */
+    public function sku_lookup_convert_section_cb () {
+        echo __( 'One line per lookup/coversion. separated by a {space}', 'bit-gf-submitter' );
     }
 
     /**
@@ -352,7 +627,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            $this->log_it( "debug", "Test debug: " . $the_item);
        }
 
-       
+
        if ( count($missingprintfiles) > 0 ) {
            $this->log_it( "debug", count($missingprintfiles) . " Item(s) missing artwork.");
            $order->update_status ( "gf-errart", count($missingprintfiles) . " Item(s) missing artwork." );
@@ -360,11 +635,11 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        }
        if ( $order->status == "gf-rexp") {
            $the_submission = [];
-           $the_submission['resellerName'] = 'BlackIce Trading Ltd';
-           $the_submission['resellerPhoneNumber'] = '123456';
-           $the_submission['resellerEmailAddress'] = 'jodi@blackicetrading.com';
+           $the_submission['resellerName'] = $this->api_busines_name;
+           $the_submission['resellerPhoneNumber'] = $this->api_business_phone_number;
+           $the_submission['resellerEmailAddress'] = $this->api_business_email;
            $the_submission['utcResellerOrderTimestampDateTime'] = $order->get_date_completed();
-           $the_submission['resellerOrderNumber'] = $order->get_order_number();
+           $the_submission['resellerOrderNumber'] = $this->api_order_prefix . $order->get_order_number();
 
            $the_submission['customerName'] = $order->get_billing_first_name() . " " . $order->get_billing_last_name();
            if ( $order->get_billing_company() != "" ) {
@@ -394,12 +669,11 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
 
            $the_submission['items'] = $submitting_items;
 
-           $submiturl = "https://653222e384157ae04ba8fd79bb11068d.m.pipedream.net";
-
            $curl = curl_init();
-           curl_setopt($curl, CURLOPT_URL, $submiturl);
+           curl_setopt($curl, CURLOPT_URL, $this->api_endpoint);
            curl_setopt($curl, CURLOPT_HTTPHEADER, array(
-               'APIKEY: 111111111111111111111',
+               'APIKEY: ' . $this->api_key,
+               'APISECRET: ' . $this->api_secret,
                'Content-Type: application/json',
            ));
            curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
@@ -424,7 +698,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
       $skuregex = "/^([a-zA-z]+[0-9]+)/i";
       preg_match( $skuregex, $sku, $matches );
       if ( $matches ) {
-          $url = $this->baseurl . strtoupper($matches[1]) . "/" . strtoupper($sku) . ".png";
+          $url = $this->printfiles_url . strtoupper($matches[1]) . "/" . strtoupper($sku) . ".png";
           $this->log_it( "debug", "SKU: " . $sku . " URL: " . $url );
           return $url;
       }
@@ -441,17 +715,17 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        $metadate = strtotime($printfilelastchecked);
        $checkdate = new DateTime();
        $checkdate->setTimeStamp($metadate);
-       $postmetaplustime = date_add($checkdate, date_interval_create_from_date_string ( $this->printfilevalidduration ) );
+       $postmetaplustime = date_add($checkdate, date_interval_create_from_date_string ( $this->printfiles_cache_timeout ) );
        $this->log_it( "debug", "Print File Meta: " . $printfilelastchecked . " Valid Until: " . $postmetaplustime->format('Y-m-d H:i:s') . " Now: " . $now->format('Y-m-d H:i:s') );
        if ( $now < $checkdate ) {
-           $this->log_it( "debug", "Print File Checked in the last " . $this->printfilevalidduration . ". Skipping Check." );
+           $this->log_it( "debug", "Print File Checked in the last " . $this->printfiles_cache_timeout . ". Skipping Check." );
            return true;
        } else {
            $datetime = date("Y-m-d H:i:s");
            $this->log_it( "debug", "Print File Expired. Checking it... " );
            $printfilevalid = $this->check_image_url( $printfileurl );
            if ( $printfilevalid ) {
-               $this->log_it( "debug", "Print File Validated. Updating Meta Data Info. Valid for another " . $this->printfilevalidduration . "." );
+               $this->log_it( "debug", "Print File Validated. Updating Meta Data Info. Valid for another " . $this->printfiles_cache_timeout . "." );
                update_post_meta( $product_id, 'printfilevalid', $datetime );
                return true;
            } else {
