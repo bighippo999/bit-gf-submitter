@@ -654,9 +654,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        $this->log_it( "debug", "Total Items Submitting: " . $total_items . ". Total Items NOT Submitting: " . $not_gf_items);
        foreach ( $submitting_items as $k => $v ) {
            $submitting_items[$k]['totalParts'] = $total_items;
-           $this->log_it( "debug", "Test debug: " . $the_item);
        }
-
 
        if ( count($missingprintfiles) > 0) {
            $this->log_it( "debug", count($missingprintfiles) . " Item(s) missing artwork.");
@@ -677,49 +675,60 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            $the_submission['resellerOrderNumber'] = $this->api_order_prefix . $order->get_order_number();
 
            $the_submission['customerName'] = $order->get_billing_first_name() . " " . $order->get_billing_last_name();
-           if ( $order->get_billing_company() != "" ) {
-               $the_submission['customerAddressLineOne'] = $order->get_billing_company();
-               $the_submission['customerAddressLineTwo'] = $order->get_billing_address_1() . ", " . $order->get_billing_address_2();
-           } else {
-               $the_submission['customerAddressLineOne'] = $order->get_billing_address_1();
-               $the_submission['customerAddressLineTwo'] = $order->get_billing_address_2();
-           }
+           $the_submission['customerCompanyName'] = $order->get_billing_company();
+           $the_submission['customerAddressLineOne'] = $order->get_billing_address_1();
+           $the_submission['customerAddressLineTwo'] = $order->get_billing_address_2();
            $the_submission['customerAddressTown'] = $order->get_billing_city();
            $the_submission['customerAddressCounty'] = $order->get_billing_state();
            $the_submission['customerAddressPostcode'] = $order->get_billing_postcode();
            $the_submission['customerAddressCountry'] = $order->get_billing_country();
            $the_submission['shippingTo'] = $order->get_shipping_first_name() . " " . $order->get_shipping_last_name();
-           if ( $order->get_shipping_company() != "" ) {
-               $the_submission['shippingAddressLineOne'] = $order->get_shipping_company();
-               $the_submission['shippingAddressLineTwo'] = $order->get_shipping_address_1() . ", " . $order->get_shipping_address_2();
-           } else {
-               $the_submission['shippingAddressLineOne'] = $order->get_shipping_address_1();
-               $the_submission['shippingAddressLineTwo'] = $order->get_shipping_address_2();
-           }
+           $the_submission['shippingCompanyName '] = $order->get_shipping_company();
+           $the_submission['shippingAddressLineOne'] = $order->get_shipping_address_1();
+           $the_submission['shippingAddressLineTwo'] = $order->get_shipping_address_2();
            $the_submission['shippingAddressTown'] = $order->get_shipping_city();
            $the_submission['shippingAddressCounty'] = $order->get_shipping_state();
            $the_submission['shippingAddressPostcode'] = $order->get_shipping_postcode();
            $the_submission['shippingAddressCountry'] = $order->get_shipping_country();
            $the_submission['shippingAddressCountryCode'] = $order->get_shipping_country();
+           $the_submission['shippingMethodAlias '] = 'Cheapest option ;)';
 
            $the_submission['items'] = $submitting_items;
 
            $curl = curl_init();
            curl_setopt($curl, CURLOPT_URL, $this->api_endpoint);
            curl_setopt($curl, CURLOPT_HTTPHEADER, array(
-               'APIKEY: ' . $this->api_key,
-               'APISECRET: ' . $this->api_secret,
+               'Authorization: Basic ' . base64_encode( $this->api_key . ":" . $this->api_secret ),
+//               'APIKEY: ' . $this->api_key,
+//               'APISECRET: ' . $this->api_secret,
                'Content-Type: application/json',
            ));
            curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
            curl_setopt($curl, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
            curl_setopt($curl, CURLOPT_POST, 1);
            curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($the_submission));
-           $output = curl_exec($curl);
+           $response_json = curl_exec($curl);
+           $response_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
            curl_close($curl);
-           
-           return "success";
-       } else {
+
+//           $this->log_it( "debug", "jsondata: " . $response_json );
+
+           if ( !$response_json) {
+               $this->log_it( "error", "Submission failed. Response Code: " . $response_code );
+               return "failed";
+           } elseif ( $response_code == 201 ) {
+               $response = json_decode($response_json, true);
+               $responseorderNumber = $response['orderNumber'];
+               $responseID = $response['id'];
+               $this->log_it( "debug", "Response orderNumber: " . $responseorderNumber . " ID: " .  $responseID);
+               $order->update_status ( "gf-aimp", "Order submit to GF. Items count: " . $total_items . " Order Number: " . $responseorderNumber );
+               return "success";
+           } else {
+               $this->log_it( "error", "Submission failed. Response Code: " . $response_code );
+               return "failed";
+           }
+       } else { // if ( $order->status == "gf-rexp")
+           $this->log_it( "error", "Order not GF (Ready to Export). Submission aborted." );
            return "failed";
        }
 
