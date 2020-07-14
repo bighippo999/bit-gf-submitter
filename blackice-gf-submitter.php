@@ -25,6 +25,9 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
 
     public function __construct() {
         $options = get_option( 'bit-gf-submitter_settings' );
+        $this->core_task_scheduler = isset($options['task_scheduler']) ? $options['task_scheduler'] : false;
+        $this->core_full_debug = isset($options['full_debug']) ? $options['full_debug'] : false;
+
         $this->api_busines_name = isset($options['api_business_name']) ? $options['api_business_name'] : '';
         $this->api_business_phone_number = isset($options['api_business_phone_number']) ? $options['api_business_phone_number'] : '';
         $this->api_business_email = isset($options['api_business_email']) ? $options['api_business_email'] : '';
@@ -96,6 +99,12 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
      * Submenu callback page generation
      */
     public function options_page_cb() {
+        $scheduled_task = as_next_scheduled_action( 'bit_gf_submitter_schedule_event', array(), 'GF Order Submitter' );
+        if ( $this->core_task_scheduler && ! $scheduled_task ) {
+            $result = as_schedule_recurring_action( time()+300, 300, 'bit_gf_submitter_schedule_event', array(), "GF Order Submitter" );
+        } elseif ( ! $this->core_task_scheduler ) {
+            $result = as_unschedule_all_actions( 'bit_gf_submitter_schedule_event', array(), 'GF Order Submitter' );
+        }
         ?>
         <form action='options.php' method='post'>
             <h2>GF Submitter Settings</h2>
@@ -118,8 +127,31 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
 
         add_settings_section(
             'bit_gf_core_section',
-            __( 'GF Core settings', 'bit-gf-submitter' ),
-            array( $this, 'settings_section_cb' ),
+            __( 'Core Settings', 'bit-gf-submitter' ),
+            array( $this, 'settings_core_section_cb' ),
+            'bit_gf_pluginPage'
+        );
+
+        add_settings_field(
+            'checkbox_task_scheduler',
+            __( 'Enable Auto Submit', 'bit-gf-submitter' ),
+            array( $this, 'gf_settings_task_scheduler' ),
+            'bit_gf_pluginPage',
+            'bit_gf_core_section'
+        );
+
+        add_settings_field(
+            'checkbox_full_debug',
+            __( 'Enable Full Debug', 'bit-gf-submitter' ),
+            array( $this, 'gf_settings_full_debug' ),
+            'bit_gf_pluginPage',
+            'bit_gf_core_section'
+        );
+
+        add_settings_section(
+            'bit_gf_api_section',
+            __( 'GF API settings', 'bit-gf-submitter' ),
+            array( $this, 'gf_api_section_cb' ),
             'bit_gf_pluginPage'
         );
 
@@ -128,7 +160,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
             __( 'Business Name', 'bit-gf-submitter' ),
             array( $this, 'text_field_business_name_render' ),
             'bit_gf_pluginPage',
-            'bit_gf_core_section'
+            'bit_gf_api_section'
         );
 
         add_settings_field(
@@ -136,7 +168,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
             __( 'Business Phone Number', 'bit-gf-submitter' ),
             array( $this, 'text_field_business_phone_number_render' ),
             'bit_gf_pluginPage',
-            'bit_gf_core_section'
+            'bit_gf_api_section'
         );
 
         add_settings_field(
@@ -144,7 +176,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
             __( 'Business Email', 'bit-gf-submitter' ),
             array( $this, 'text_field_business_email_render' ),
             'bit_gf_pluginPage',
-            'bit_gf_core_section'
+            'bit_gf_api_section'
         );
 
         add_settings_field(
@@ -152,7 +184,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
             __( 'Order Prefix', 'bit-gf-submitter' ),
             array( $this, 'text_field_order_prefix_render' ),
             'bit_gf_pluginPage',
-            'bit_gf_core_section'
+            'bit_gf_api_section'
         );
 
         add_settings_field(
@@ -160,7 +192,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
             __( 'API Key', 'bit-gf-submitter' ),
             array( $this, 'text_field_api_key_render' ),
             'bit_gf_pluginPage',
-            'bit_gf_core_section'
+            'bit_gf_api_section'
         );
 
         add_settings_field(
@@ -168,7 +200,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
             __( 'API Secret', 'bit-gf-submitter' ),
             array( $this, 'text_field_api_secret_render' ),
             'bit_gf_pluginPage',
-            'bit_gf_core_section'
+            'bit_gf_api_section'
         );
 
         add_settings_field(
@@ -176,7 +208,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
             __( 'API ID', 'bit-gf-submitter' ),
             array( $this, 'text_field_api_id_render' ),
             'bit_gf_pluginPage',
-            'bit_gf_core_section'
+            'bit_gf_api_section'
         );
 
         add_settings_field(
@@ -184,7 +216,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
             __( 'API EndPoint', 'bit-gf-submitter' ),
             array( $this, 'text_field_api_endpoint_render' ),
             'bit_gf_pluginPage',
-            'bit_gf_core_section'
+            'bit_gf_api_section'
         );
 
         add_settings_section(
@@ -225,6 +257,25 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
             'bit_gf_sku_conversion_section'
         );
 
+    }
+
+    /**
+     * checkbox_field_task_scheduler
+     */
+    public function gf_settings_task_scheduler() {
+        $result = as_next_scheduled_action( 'bit_gf_submitter_schedule_event', array(), 'GF Order Submitter' );
+        ?>
+        <input type='checkbox' name='bit-gf-submitter_settings[task_scheduler]' <?php if($result){echo "checked";}; ?>>(Every 5 Min)</input>
+        <?php
+    }
+
+    /**
+     * checkbox_field_full_debug
+     */
+    public function gf_settings_full_debug() {
+        ?>
+        <input type='checkbox' name='bit-gf-submitter_settings[full_debug]' <?php if ($this->core_full_debug){echo "checked";}; ?>></input>
+        <?php
     }
 
     /**
@@ -332,21 +383,28 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
     /**
      * settings_section_callback
      */
-    public function settings_section_cb () {
+    public function gf_api_section_cb() {
         echo __( 'Settings obtained from GF. Make sure to fill in the correct details', 'bit-gf-submitter' );
     }
 
     /**
      * printfile_settings_section_callback
      */
-    public function printfile_settings_section_cb () {
+    public function printfile_settings_section_cb() {
         echo __( 'Used to verify the Print File are available during submission', 'bit-gf-submitter' );
+    }
+
+    /**
+     * settings_core_section_callback
+     */
+    public function settings_core_section_cb() {
+
     }
 
     /**
      * sku_lookup_convert_section_callback
      */
-    public function sku_lookup_convert_section_cb () {
+    public function sku_lookup_convert_section_cb() {
         echo __( 'One line per lookup/coversion. separated by a {space}. Case insensitive.', 'bit-gf-submitter' );
         echo "<br />";
         echo __( 'Warning: Partial matches should NOT exist! eg a lookup for SPC1AP11 and SPC1.', 'bit-gf-submitter' );
@@ -378,7 +436,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
      * The code that runs during plugin deactivation.
      */
     public function plugin_deactivate() {
-        $result = as_unschedule_all_actions( 'bit_gf_submitter_schedule_event', array(), "GF Order Submitter" );
+        $result = as_unschedule_all_actions( 'bit_gf_submitter_schedule_event', array(), 'GF Order Submitter' );
     }
 
    /**
@@ -442,6 +500,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            'label_count'               => _n_noop( 'GF (Failed Submission) <span class="count">(%s)</span>', 'GF (Failed Submission) <span class="count">(%s)</span>', 'woocommerce' ),
        );
 
+       ksort( $order_statuses );
        return $order_statuses;
    }
 
@@ -473,7 +532,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        $redirect = remove_query_arg( array( 'act-man-gf-submit','gf_sub_success', 'gf_sub_missing', 'gf_sub_failed', ), $redirect );
 
        if ( $doaction == 'act-man-gf-submit' ) {
-           $this->log_it( "info", "Performing Bulk Action for act-man-gf-submit" );
+           if ( $this->core_full_debug ) { $this->log_it( "info", "Performing Manual Bulk Action for act-man-gf-submit" ); };
            $bulk_success_counter = 0;
            $bulk_missing_counter = 0;
            $bulk_failed_counter = 0;
@@ -483,14 +542,17 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
                $order = wc_get_order( $order_id );
 
                $status = $this->submit_order( $order );
-               if ( $status == "success") {
-               $this->log_it( "debug", "Result: success" );
+               if ( ! $status ) {
+                   $this->log_it( "debug", "Result: Failed" );
+                   $bulk_failed_counter++;
+               } elseif ( $status == "success") {
+                   $this->log_it( "debug", "Result: Success" );
                    $bulk_success_counter++;
                } elseif ( $status == "missing" ) {
-               $this->log_it( "debug", "Result: missing" );
+                   $this->log_it( "debug", "Result: Missing" );
                    $bulk_missing_counter++;
                } else {
-               $this->log_it( "debug", "Result: failed" );
+                   $this->log_it( "debug", "Result: failed" );
                    $bulk_failed_counter++;
                }
            }
@@ -568,6 +630,11 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            return;
        }
 
+       if ( $order->get_status() == "gf-aimp" ) {
+           $this->log_it( "debug", "Order is ALREADY GF (Awaiting Import. Aborting!");
+           return false;
+       }
+
        $submitting_items = [];
 
        $order_items = $order->get_items();
@@ -606,25 +673,23 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
                    break;
            } // end switch
 //           $this->log_it( "debug", "Product Title: " . implode(",", $product_titles ) );
-           $this->log_it( "debug", "Product Title: " . $product_name );
-           $this->log_it( "debug", "Product Type: " . $product_type );
-           $this->log_it( "debug", "Product ID: " . $product_id );
-           if ( $parent_id ) { $this->log_it( "debug", "Parent ID: " . $parent_id ); };
-           $this->log_it( "debug", "Product SKU: " . $product_sku );
+           if ( $this->core_full_debug ) { $this->log_it( "debug", "Product Title: " . $product_name ); };
+           if ( $this->core_full_debug ) { $this->log_it( "debug", "Product Type: " . $product_type ); };
+           if ( $this->core_full_debug ) { $this->log_it( "debug", "Product ID: " . $product_id ); };
+           if ( $this->core_full_debug && $parent_id ) { $this->log_it( "debug", "Parent ID: " . $parent_id ); };
+           if ( $this->core_full_debug ) { $this->log_it( "debug", "Product SKU: " . $product_sku ); };
 
-           $this->log_it( "debug", "Product Suppliers: " . implode(", ", $productattrib) );
+           if ( $this->core_full_debug ) { $this->log_it( "debug", "Product Suppliers: " . implode(", ", $productattrib) ); };
            // check GiftFlow is a valid supplier for this item.
            if ( in_array( "gf", $productattrib) ) {
-               $this->log_it( "debug", "GiftFlow is a Valid Supplier. Processing Item." );
-               // Check the Print File is Valid.
-               $printfileurl = $this->convert_sku_to_printfileurl( $product_sku  );
-               $printfilevalid = $this->check_print_file_valid( $product_id, $printfileurl);
-               if ( ! $printfilevalid ) {
-                   $missingprintfiles[] = $printfileurl;
-               } else {
+               if ( $this->core_full_debug ) { $this->log_it( "debug", "Valid GF Item. Processing..." ); };
+               $product_code = $this->convert_sku_to_gf_product_code( $product_sku );
+               if ( $product_code ) {
                    $is_gf_items++;
-                   $product_code = $this->convert_sku_to_gf_product_code( $product_sku );
-                   if ( $product_code ) {
+                   // Check the Print File is Valid.
+                   $printfileurl = $this->convert_sku_to_printfileurl( $product_sku  );
+                   $printfilevalid = $this->check_print_file_valid( $product_id, $printfileurl);
+                   if ( $printfilevalid ) {
                        $submitting_this_item = [];
                        $submitting_this_item['productSku'] = $product_code;
                        $submitting_this_item['customerProductReference'] = $product_sku;
@@ -634,39 +699,42 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
                        $submitting_this_item['partNumber'] = $is_gf_items;
                        $submitting_this_item['itemAssetDetails'] = array( 'itemAssetUrl' => $printfileurl );
 
-                       $this->log_it( "debug", "Adding Item No. " . $is_gf_items . " to Items list." );
+                       if ( $this->core_full_debug ) { $this->log_it( "debug", "Adding Item No. " . $is_gf_items . " to Items list." ); };
                        $submitting_items[] = $submitting_this_item;
                    } else {
-                       $missingproductcode[] = $product_sku;
-                       $this->log_it( "error", "Unable to link sku to product code. Aborting submission!" );
-                   }
-               }
-
+                       $missingprintfiles[] = $printfileurl;
+                   } // end $printfilevalid
+               } else {
+                   $missingproductcode[] = $product_sku;
+                   if ( $this->core_full_debug ) { $this->log_it( "error", "Unable to link sku to product code." ); };
+               } // end $product_code
            } else {
-               $this->log_it( "debug", "NOT a GiftFlow Item. Skipping." );
+               if ( $this->core_full_debug ) { $this->log_it( "debug", "NOT a GF Item. Skipping." ); };
                $not_gf_items++;
            }
-
        } // end foreach ( $order_items as $item_id => $item )
 
        // loop again to add the totalParts count.
        $total_items = count( $submitting_items );
-       $this->log_it( "debug", "Total Items Submitting: " . $total_items . ". Total Items NOT Submitting: " . $not_gf_items);
        foreach ( $submitting_items as $k => $v ) {
            $submitting_items[$k]['totalParts'] = $total_items;
        }
 
-       if ( count($missingprintfiles) > 0) {
-           $this->log_it( "debug", count($missingprintfiles) . " Item(s) missing artwork.");
+       if ( count( $missingproductcode ) > 0 ) {
+           $this->log_it( "error", count($missingproductcode) . " Item(s) unable to link to GF Product(s). Abort submission!");
+           $order->update_status ( "gf-errapi", count($missingproductcode) . " Item(s) unable to link to GF Product(s)." );
+           return "failed";
+       } elseif ( count( $missingprintfiles ) > 0 ) {
+           $this->log_it( "error", count($missingprintfiles) . " Item(s) missing artwork. Abort submission!");
            $order->update_status ( "gf-errart", count($missingprintfiles) . " Item(s) missing artwork." );
            return "missing";
-       }
-       if ( count($missingproductcode) > 0) {
-           $this->log_it( "debug", count($missingproductcode) . " Item(s) unable to link to GF Product(s).");
-           $order->update_status ( "gf-errapi", count($missingproductcode) . " Item(s) unable to link to GF Product(s)." );
-           return "missing";
-       }
-       if ( $order->status == "gf-rexp") {
+       } elseif ( count( $submitting_items ) > 0 ) {
+           if ( $not_gf_items == 0 ) {
+               $this->log_it( "debug", "Total GF Items Submitting: " . $total_items  . " ...");
+           } else {
+               $this->log_it( "debug", "Total GF Items Submitting: " . $total_items . ", NOT GF Items: " . $not_gf_items . " ...");
+           }
+
            $the_submission = [];
            $the_submission['resellerName'] = $this->api_busines_name;
            $the_submission['resellerPhoneNumber'] = $this->api_business_phone_number;
@@ -711,27 +779,29 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            $response_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
            curl_close($curl);
 
-//           $this->log_it( "debug", "jsondata: " . $response_json );
-
            if ( !$response_json) {
                $this->log_it( "error", "Submission failed. Response Code: " . $response_code );
+               $order->update_status ( "gf-errapi", "Submission to GF failed. Response Code: " . $response_code );
                return "failed";
            } elseif ( $response_code == 201 ) {
                $response = json_decode($response_json, true);
                $responseorderNumber = $response['orderNumber'];
                $responseID = $response['id'];
                $this->log_it( "debug", "Response orderNumber: " . $responseorderNumber . " ID: " .  $responseID);
+               $order->add_order_note( "GF: " . $responseorderNumber );
                $order->update_status ( "gf-aimp", "Order submit to GF. Items count: " . $total_items . " Order Number: " . $responseorderNumber );
                return "success";
            } else {
                $this->log_it( "error", "Submission failed. Response Code: " . $response_code );
+               $order->update_status ( "gf-errapi", "Submission to GF failed. Response Code: " . $response_code );
                return "failed";
            }
-       } else { // if ( $order->status == "gf-rexp")
-           $this->log_it( "error", "Order not GF (Ready to Export). Submission aborted." );
+       } else {
+           // There's no items to submit to GF.
+           $this->log_it( "error", "Order does not contain GF items." );
+           $order->update_status ( "gf-errapi", "Order does not contain GF items." );
            return "failed";
        }
-
    }
 
    /**
@@ -743,7 +813,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
       preg_match( $skuregex, $sku, $matches );
       if ( $matches ) {
           $url = $this->printfiles_url . strtoupper($matches[1]) . "/" . strtoupper($sku) . ".png";
-          $this->log_it( "debug", "SKU: " . $sku . " URL: " . $url );
+          if ( $this->core_full_debug ) { $this->log_it( "debug", "SKU: " . $sku . " URL: " . $url ); };
           return $url;
       }
       return false;
@@ -757,7 +827,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        preg_match( $skuregex, $sku, $matches );
        $product_code = $this->sku_lookup_convert[$matches[2]];
        if ( $product_code ) {
-           $this->log_it( "debug", "SKU: " . $sku . " Product Code: " . $product_code );
+           if ( $this->core_full_debug ) { $this->log_it( "debug", "SKU: " . $sku . " Product Code: " . $product_code ); };
            return $product_code;
        } else {
            $this->log_it( "warning", "SKU: " . $sku . " Has no corresponding Product Code!" );
@@ -776,13 +846,13 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        $checkdate = new DateTime();
        $checkdate->setTimeStamp($metadate);
        $postmetaplustime = date_add($checkdate, date_interval_create_from_date_string ( $this->printfiles_cache_timeout ) );
-       $this->log_it( "debug", "Print File Meta: " . $printfilelastchecked . " Valid Until: " . $postmetaplustime->format('Y-m-d H:i:s') . " Now: " . $now->format('Y-m-d H:i:s') );
+       if ( $this->core_full_debug ) { $this->log_it( "debug", "Print File Meta: " . $printfilelastchecked . " Valid Until: " . $postmetaplustime->format('Y-m-d H:i:s') . " Now: " . $now->format('Y-m-d H:i:s') ); };
        if ( $now < $checkdate ) {
            $this->log_it( "debug", "Print File Checked in the last " . $this->printfiles_cache_timeout . ". Skipping Check." );
            return true;
        } else {
            $datetime = date("Y-m-d H:i:s");
-           $this->log_it( "debug", "Print File Expired. Checking it... " );
+           if ( $this->core_full_debug ) { $this->log_it( "debug", "Print File Expired. Checking it... " ); };
            $printfilevalid = $this->check_image_url( $printfileurl );
            if ( $printfilevalid ) {
                $this->log_it( "debug", "Print File Validated. Updating Meta Data Info. Valid for another " . $this->printfiles_cache_timeout . "." );
@@ -804,7 +874,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        $url = filter_var($url, FILTER_SANITIZE_URL);
 
        // Validate url
-       $this->log_it( "debug", "Validating Image URL: " . $url );
+       if ( $this->core_full_debug ) { $this->log_it( "debug", "Validating Image URL: " . $url ); };
        if (filter_var($url, FILTER_VALIDATE_URL)) {
            $ch = curl_init();
            curl_setopt($ch, CURLOPT_URL,$url);
@@ -817,10 +887,10 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            $result = curl_exec($ch);
            curl_close($ch);
            if($result !== FALSE) {
-               $this->log_it( "info", "Image URL Valid: " . $url );
+               if ( $this->core_full_debug ) { $this->log_it( "info", "Image URL Valid: " . $url ); };
                return true;
            } else {
-               $this->log_it( "warning", "Image URL INVALID: " . $url );
+               if ( $this->core_full_debug ) { $this->log_it( "warning", "Image URL INVALID: " . $url ); };
                return false;
            }
        } else {
