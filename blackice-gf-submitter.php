@@ -640,6 +640,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        $order_items = $order->get_items();
        $not_gf_items = 0;
        $is_gf_items = 0;
+       $gf_note_check_quantity = 0;
 
        $missingprintfiles = [];
        $missingproductcode = [];
@@ -696,11 +697,15 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
                        $submitting_this_item['customerProductName'] = $product_name;
                        $submitting_this_item['customerProductDescription'] = "";
                        $submitting_this_item['quantity'] = $quantity;
+                       if ( $quantity > 1 ) {
+                           $gf_note_check_quantity = 1;
+                       };
                        $submitting_this_item['partNumber'] = $is_gf_items;
-                       $submitting_this_item['itemAssetDetails'] = array( 'itemAssetUrl' => $printfileurl );
+                       $submitting_this_item['itemAssetDetails'] = [];
+                       $submitting_this_item['itemAssetDetails'][]['itemAssetUrl'] = $printfileurl;
 
-                       if ( $this->core_full_debug ) { $this->log_it( "debug", "Adding Item No. " . $is_gf_items . " to Items list." ); };
                        $submitting_items[] = $submitting_this_item;
+                       if ( $this->core_full_debug ) { $this->log_it( "debug", "Adding Item No. " . $is_gf_items . " to Items list." ); };
                    } else {
                        $missingprintfiles[] = $printfileurl;
                    } // end $printfilevalid
@@ -759,12 +764,21 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            $the_submission['shippingAddressPostcode'] = $order->get_shipping_postcode();
            $the_submission['shippingAddressCountry'] = $order->get_shipping_country();
            $the_submission['shippingAddressCountryCode'] = $order->get_shipping_country();
-           $the_submission['shippingMethodAlias '] = 'Cheapest option ;)';
+           $the_submission['shippingMethodAlias'] = 'Cheapest option ;)';
+           $the_submission['testOrder'] = True;
+           if ( $gf_note_check_quantity == 1 ) {
+               $the_submission['notes'] = "Check QTY when packing. TEST ORDER/ DO NOT PRINT/SEND.";
+           } else {
+               $the_submission['notes'] = "TEST ORDER. DO NOT PRINT/SEND.";
+           }
 
            $the_submission['items'] = $submitting_items;
 
            $curl = curl_init();
-           curl_setopt($curl, CURLOPT_URL, $this->api_endpoint);
+           $url_endpoint = str_replace("{ID}", $this->api_id, $this->api_endpoint);
+           if ( $this->core_full_debug ) { $this->log_it( "debug", "API_Endpoint: " . $url_endpoint ); };
+
+           curl_setopt($curl, CURLOPT_URL, $url_endpoint);
            curl_setopt($curl, CURLOPT_HTTPHEADER, array(
                'Authorization: Basic ' . base64_encode( $this->api_key . ":" . $this->api_secret ),
 //               'APIKEY: ' . $this->api_key,
@@ -780,20 +794,20 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            curl_close($curl);
 
            if ( !$response_json) {
-               $this->log_it( "error", "Submission failed. Response Code: " . $response_code );
-               $order->update_status ( "gf-errapi", "Submission to GF failed. Response Code: " . $response_code );
+               $this->log_it( "error", "Submission failed. Response Code: " . $response_code . " Response: " . $response_json );
+               $order->update_status ( "gf-errapi", "Submission to GF failed. Response Code: " . $response_code . " Response: " . $response_json );
                return "failed";
            } elseif ( $response_code == 201 ) {
                $response = json_decode($response_json, true);
                $responseorderNumber = $response['orderNumber'];
                $responseID = $response['id'];
                $this->log_it( "debug", "Response orderNumber: " . $responseorderNumber . " ID: " .  $responseID);
-               $order->add_order_note( "GF: " . $responseorderNumber );
-               $order->update_status ( "gf-aimp", "Order submit to GF. Items count: " . $total_items . " Order Number: " . $responseorderNumber );
+               $order->add_order_note( "GF: " . $responseID );
+               $order->update_status ( "gf-adis", "Order submit to GF. Items count: " . $total_items . " Order Number: " . $responseorderNumber );
                return "success";
            } else {
-               $this->log_it( "error", "Submission failed. Response Code: " . $response_code );
-               $order->update_status ( "gf-errapi", "Submission to GF failed. Response Code: " . $response_code );
+               $this->log_it( "error", "Submission failed. Response Code: " . $response_code . " Response: " . $response_json );
+               $order->update_status ( "gf-errapi", "Submission to GF failed. Response Code: " . $response_code . " Response: " . $response_json );
                return "failed";
            }
        } else {
