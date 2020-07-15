@@ -5,7 +5,7 @@
  * Plugin Name:       BlackIce GF Submitter
  * Plugin URI:        http://www.blackicetrading.com/plugin-bit-gf-submitter
  * Description:       Automatically submit GF orders via the GF API.
- * Version:           0.1
+ * Version:           0.3
  * Author:            Dan
  * Author URI:        http://www.blackicetrading.com
  * License:           GPL-2.0+

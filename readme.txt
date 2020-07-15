@@ -28,6 +28,21 @@ For use with BlackIce systems and automation. Untested/unsupported for other sys
 
 == Changelog ==
 
+= 0.3 =
+* Initial testing all working. with GF systems. Further testing from live system before removal of testing api flag.
+
+= 0.2 =
+* All programming and testing upto running.
+* Adds 2 new queues for missing artwork and API error.
+* Scheduled Action logic for checking GF (Ready to Export) queue every 5 mins.
+* Added Bulk action Submit to GF item and link into target of scheduled action. update scheduled action args to pass same data as bulk action.
+* Added GF Submitter options page and options.
+* Added plugin variables to pull from set options.
+* Printfile logic to check Printfile URL is valid. Added checks for cache of Printfileurl check.
+* SKU convert lookup and logic.
+* API submission build and checks.
+* Inital plugin testing now working. progressing to v0.3
+
 = 0.1 =
 * Initial setup of plugin directory structure.
 * Create GIT repository
