@@ -640,7 +640,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
        $order_items = $order->get_items();
        $not_gf_items = 0;
        $is_gf_items = 0;
-       $gf_note_check_quantity = 0;
+       $gf_note_check_quantity = False;
 
        $missingprintfiles = [];
        $missingproductcode = [];
@@ -687,22 +687,49 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
                $product_code = $this->convert_sku_to_gf_product_code( $product_sku );
                if ( $product_code ) {
                    $is_gf_items++;
-                   // Check the Print File is Valid.
-                   $printfileurl = $this->convert_sku_to_printfileurl( $product_sku  );
-                   $printfilevalid = $this->check_print_file_valid( $product_id, $printfileurl);
-                   if ( $printfilevalid ) {
+                   $skip_printfile_check = False;
+                   // check if a skip printfile product.
+                   $no_printfile_codes = array( "P-FILTERL", "P-FILTERS" );
+                   $qty_multiplier_item_codes = array( "P-FILTERL", "P-FILTERS" );
+                   if ( in_array($product_code, $no_printfile_codes)) {
+                       $skip_printfile_check = True;
+                   } else {
+                       // Check the Print File is Valid.
+                       $printfileurl = $this->convert_sku_to_printfileurl( $product_sku  );
+                       $printfilevalid = $this->check_print_file_valid( $product_id, $printfileurl);
+                   }
+                   if ( $printfilevalid || $skip_printfile_check ) {
                        $submitting_this_item = [];
                        $submitting_this_item['productSku'] = $product_code;
                        $submitting_this_item['customerProductReference'] = $product_sku;
                        $submitting_this_item['customerProductName'] = $product_name;
                        $submitting_this_item['customerProductDescription'] = "";
-                       $submitting_this_item['quantity'] = $quantity;
+
+                       // multiple the quantity for qty_multiplier_products.
+                       if ( in_array($product_code, $qty_multiplier_item_codes) ) {
+                           $skuregex = "/-([0-9]+)$/i";
+                           preg_match( $skuregex, $product_sku, $matches );
+                           if ( $matches ) {
+                               $multiplier = $matches[1];
+                               if ( $this->core_full_debug ) { $this->log_it( "debug", "Quantity Multipler: " . $multiplier . "." ); };
+                               $multipled_quantity = $multiplier * $quantity;
+                               if ( $this->core_full_debug ) { $this->log_it( "debug", "Proper Quantity: " . $multipled_quantity . "." ); };
+                               $submitting_this_item['quantity'] = $multipled_quantity;
+                           } else {
+                               if ( $this->core_full_debug ) { $this->log_it( "debug", "Failed to Find Multiplier. Quantity: " . $quantity . "." ); };
+                               $submitting_this_item['quantity'] = $quantity;
+                           }
+                       } else {
+                           $submitting_this_item['quantity'] = $quantity;
+                       }
                        if ( $quantity > 1 ) {
-                           $gf_note_check_quantity = 1;
+                           $gf_note_check_quantity = True;
                        };
                        $submitting_this_item['partNumber'] = $is_gf_items;
-                       $submitting_this_item['itemAssetDetails'] = [];
-                       $submitting_this_item['itemAssetDetails'][]['itemAssetUrl'] = $printfileurl;
+                       if ( ! $skip_printfile_check ) {
+                           $submitting_this_item['itemAssetDetails'] = [];
+                           $submitting_this_item['itemAssetDetails'][]['itemAssetUrl'] = $printfileurl;
+                       };
 
                        $submitting_items[] = $submitting_this_item;
                        if ( $this->core_full_debug ) { $this->log_it( "debug", "Adding Item No. " . $is_gf_items . " to Items list." ); };
@@ -766,7 +793,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            $the_submission['shippingAddressCountryCode'] = $order->get_shipping_country();
            $the_submission['shippingMethodAlias'] = 'Cheapest option ;)';
 //           $the_submission['testOrder'] = True;
-           if ( $gf_note_check_quantity == 1 ) {
+           if ( $gf_note_check_quantity ) {
                $the_submission['notes'] = "Check QTY when packing.";
            } else {
                $the_submission['notes'] = "";

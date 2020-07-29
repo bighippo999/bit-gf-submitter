@@ -28,6 +28,15 @@ For use with BlackIce systems and automation. Untested/unsupported for other sys
 
 == Changelog ==
 
+= 0.5 =
+* Initial programming to account for single product with no PrintFile requirement. FILL- and FILS- variations.
+* UPDATE: variable gf_note_check_quantity now True/False not 0/1.
+* Added skip_printfile_check True/False and no_printfile_codes for SKU list. ("P-FILTERL", "P-FILTERS")
+* Added qty_multiplier_item_codes for SKU list. ("P-FILTERL", "P-FILTERS")
+* Added Multiplier logic and adjust API submission.
+* Added skip_printfile_check API submission logic.
+
+
 = 0.4 =
 * Reduce Scheduled Task time from 5 mins interval to 2 mins.
 * Increase orders submit per interval from 5 to 10.
