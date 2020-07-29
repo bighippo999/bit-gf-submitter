@@ -101,7 +101,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
     public function options_page_cb() {
         $scheduled_task = as_next_scheduled_action( 'bit_gf_submitter_schedule_event', array(), 'GF Order Submitter' );
         if ( $this->core_task_scheduler && ! $scheduled_task ) {
-            $result = as_schedule_recurring_action( time()+300, 300, 'bit_gf_submitter_schedule_event', array(), "GF Order Submitter" );
+            $result = as_schedule_recurring_action( time()+120, 120, 'bit_gf_submitter_schedule_event', array(), "GF Order Submitter" );
         } elseif ( ! $this->core_task_scheduler ) {
             $result = as_unschedule_all_actions( 'bit_gf_submitter_schedule_event', array(), 'GF Order Submitter' );
         }
@@ -265,7 +265,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
     public function gf_settings_task_scheduler() {
         $result = as_next_scheduled_action( 'bit_gf_submitter_schedule_event', array(), 'GF Order Submitter' );
         ?>
-        <input type='checkbox' name='bit-gf-submitter_settings[task_scheduler]' <?php if($result){echo "checked";}; ?>>(Every 5 Min)</input>
+        <input type='checkbox' name='bit-gf-submitter_settings[task_scheduler]' <?php if($result){echo "checked";}; ?>>(Every 2 Min)</input>
         <?php
     }
 
@@ -429,7 +429,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
             deactivate_plugins( plugin_basename( __FILE__ ) );
             wp_die( __( 'Please install and Activate WooCommerce.', 'woocommerce-addon-slug' ), 'Plugin dependency check', array( 'back_link' => true ) );
         }
-        $result = as_schedule_recurring_action( time()+300, 300, 'bit_gf_submitter_schedule_event', array(), "GF Order Submitter" );
+        $result = as_schedule_recurring_action( time()+120, 120, 'bit_gf_submitter_schedule_event', array(), "GF Order Submitter" );
     }
 
     /**
@@ -609,7 +609,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
    public function check_processing_queue() {
       $args = array(
           'status' => 'gf-rexp',
-          'limit' => 5,
+          'limit' => 10,
           'orderby' => 'date',
           'order' => 'ASC',
           'return' => 'ids',
@@ -765,11 +765,11 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            $the_submission['shippingAddressCountry'] = $order->get_shipping_country();
            $the_submission['shippingAddressCountryCode'] = $order->get_shipping_country();
            $the_submission['shippingMethodAlias'] = 'Cheapest option ;)';
-           $the_submission['testOrder'] = True;
+//           $the_submission['testOrder'] = True;
            if ( $gf_note_check_quantity == 1 ) {
-               $the_submission['notes'] = "Check QTY when packing. TEST ORDER/ DO NOT PRINT/SEND.";
+               $the_submission['notes'] = "Check QTY when packing.";
            } else {
-               $the_submission['notes'] = "TEST ORDER. DO NOT PRINT/SEND.";
+               $the_submission['notes'] = "";
            }
 
            $the_submission['items'] = $submitting_items;
@@ -873,7 +873,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
                update_post_meta( $product_id, 'printfilevalid', $datetime );
                return true;
            } else {
-               $this->log_it( "debug", "Print File NOT Valid." );
+               $this->log_it( "debug", "Print File NOT Valid. URL: " . $printfileurl );
                return false;
            }
        }

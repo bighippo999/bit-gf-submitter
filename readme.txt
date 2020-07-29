@@ -28,6 +28,13 @@ For use with BlackIce systems and automation. Untested/unsupported for other sys
 
 == Changelog ==
 
+= 0.4 =
+* Reduce Scheduled Task time from 5 mins interval to 2 mins.
+* Increase orders submit per interval from 5 to 10.
+* Commented out the Test API field for live system.
+* Remove TEST info from API Notes submission.
+* Added print file URL to Log on INVALID Print File.
+
 = 0.3 =
 * Initial testing all working. with GF systems. Further testing from live system before removal of testing api flag.
 
