@@ -5,7 +5,7 @@
  * Plugin Name:       BlackIce GF Submitter
  * Plugin URI:        http://www.blackicetrading.com/plugin-bit-gf-submitter
  * Description:       Automatically submit GF orders via the GF API.
- * Version:           0.3
+ * Version:           0.5.1
  * Author:            Dan
  * Author URI:        http://www.blackicetrading.com
  * License:           GPL-2.0+
@@ -529,36 +529,42 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
    public function bulk_action_gf_submit( $redirect, $doaction, $object_ids ) {
 
        // let's remote query ars first
-       $redirect = remove_query_arg( array( 'act-man-gf-submit','gf_sub_success', 'gf_sub_missing', 'gf_sub_failed', ), $redirect );
+       $redirect = remove_query_arg( array( 'act-man-gf-submit','gf_sub_success', 'gf_sub_missing', 'gf_sub_failed', 'gf_queues_error', ), $redirect );
 
        if ( $doaction == 'act-man-gf-submit' ) {
-           if ( $this->core_full_debug ) { $this->log_it( "info", "Performing Manual Bulk Action for act-man-gf-submit" ); };
-           $bulk_success_counter = 0;
-           $bulk_missing_counter = 0;
-           $bulk_failed_counter = 0;
+           $order_statuses = wc_get_order_statuses();
+           if( isset( $order_statuses['wc-gf-adis'] ) ) {
+               if ( $this->core_full_debug ) { $this->log_it( "info", "Performing Manual Bulk Action for act-man-gf-submit" ); };
+               $bulk_success_counter = 0;
+               $bulk_missing_counter = 0;
+               $bulk_failed_counter = 0;
 
-           foreach( $object_ids as $order_id ) {
-               $this->log_it( "debug", "Performing Bulk Action on order " . $order_id . "." );
-               $order = wc_get_order( $order_id );
+               foreach( $object_ids as $order_id ) {
+                   $this->log_it( "debug", "Performing Bulk Action on order " . $order_id . "." );
+                   $order = wc_get_order( $order_id );
 
-               $status = $this->submit_order( $order );
-               if ( ! $status ) {
-                   $this->log_it( "debug", "Result: Failed" );
-                   $bulk_failed_counter++;
-               } elseif ( $status == "success") {
-                   $this->log_it( "debug", "Result: Success" );
-                   $bulk_success_counter++;
-               } elseif ( $status == "missing" ) {
-                   $this->log_it( "debug", "Result: Missing" );
-                   $bulk_missing_counter++;
-               } else {
-                   $this->log_it( "debug", "Result: failed" );
-                   $bulk_failed_counter++;
+                   $status = $this->submit_order( $order );
+                   if ( ! $status ) {
+                       $this->log_it( "debug", "Result: Failed" );
+                       $bulk_failed_counter++;
+                   } elseif ( $status == "success") {
+                       $this->log_it( "debug", "Result: Success" );
+                       $bulk_success_counter++;
+                   } elseif ( $status == "missing" ) {
+                       $this->log_it( "debug", "Result: Missing" );
+                       $bulk_missing_counter++;
+                   } else {
+                       $this->log_it( "debug", "Result: failed" );
+                       $bulk_failed_counter++;
+                   }
                }
+               if ( $bulk_success_counter > 0 ) { $redirect = add_query_arg( array( 'gf_sub_success' => $bulk_success_counter ), $redirect ); };
+               if ( $bulk_missing_counter > 0 ) { $redirect = add_query_arg( array( 'gf_sub_missing' => $bulk_missing_counter ), $redirect ); };
+               if ( $bulk_failed_counter > 0 ) { $redirect = add_query_arg( array( 'gf_sub_failed' => $bulk_failed_counter ), $redirect ); };
+           } else {
+               $this->log_it( "error", "Order status GF (Awaiting Dispatch) Missing. Aborting manual submission!!" );
+               $redirect = add_query_arg( array( 'gf_queues_error' => 1 ), $redirect );
            }
-           if ( $bulk_success_counter > 0 ) { $redirect = add_query_arg( array( 'gf_sub_success' => $bulk_success_counter ), $redirect ); };
-           if ( $bulk_missing_counter > 0 ) { $redirect = add_query_arg( array( 'gf_sub_missing' => $bulk_missing_counter ), $redirect ); };
-           if ( $bulk_failed_counter > 0 ) { $redirect = add_query_arg( array( 'gf_sub_failed' => $bulk_failed_counter ), $redirect ); };
        } // end if
 
        return $redirect;
@@ -569,14 +575,16 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
     * Bulk Admin Notices
     */
    public function bulk_action_admin_notices() {
-       if ( ! empty( $_REQUEST['gf_sub_success'] ) || ! empty( $_REQUEST['gf_sub_missing'] ) || ! empty( $_REQUEST['gf_sub_failed'] ) ) {
+       if ( ! empty( $_REQUEST['gf_sub_success'] ) || ! empty( $_REQUEST['gf_sub_missing'] ) || ! empty( $_REQUEST['gf_sub_failed'] )|| ! empty( $_REQUEST['gf_queues_error'] ) ) {
            $bulk_success_counter = isset( $_REQUEST['gf_sub_success']) ? $_REQUEST['gf_sub_success'] : 0;
            $bulk_missing_counter = isset( $_REQUEST['gf_sub_missing']) ? $_REQUEST['gf_sub_missing'] : 0;
            $bulk_failed_counter = isset( $_REQUEST['gf_sub_failed']) ? $_REQUEST['gf_sub_failed'] : 0;
+           $bulk_queues_error = isset( $_REQUEST['gf_queues_error']) ? $_REQUEST['gf_queues_error'] : 0;
 
            if ( $bulk_success_counter > 0 ) { printf( '<div id="message" class="updated notice notice-success is-dismissible"><p>' . _n( '%s order has been Successfully Submit to GiftFlow.', '%s orders have been Successfully Submit to GiftFlow', intval( $bulk_success_counter ) ) . '</p></div>', intval( $bulk_success_counter ) ); };
            if ( $bulk_missing_counter > 0 ) { printf( '<div id="message" class="notice notice-warning is-dismissible"><p>' . _n( '%s order has Missing Artwork and NOT Submit to GiftFlow.', '%s orders have Missing Artwork and NOT Submit to GiftFlow', intval( $bulk_missing_counter ) ) . '</p></div>', intval( $bulk_missing_counter ) ); };
            if ( $bulk_failed_counter > 0 ) { printf( '<div id="message" class="notice notice-error is-dismissible"><p>' . _n( '%s order has Failed Submission to GiftFlow.', '%s orders have Failed Submission to GiftFlow', intval( $bulk_failed_counter ) ) . '</p></div>', intval( $bulk_failed_counter ) ); };
+           if ( $bulk_queues_error > 0 ) { printf( '<div id="message" class="notice notice-error is-dismissible"><p>' . _n( 'Order status GF (Awaiting Dispatch) Missing. Aborting submission!!', 'Order status GF (Awaiting Dispatch) Missing. Aborting submission!!', intval( $bulk_queues_error ) ) . '</p></div>', intval( $bulk_queues_error ) ); };
        }
    } // end function
 
@@ -607,19 +615,29 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
     * This cleans up any orders left in processing. Limit to 5 at a time.
     */
    public function check_processing_queue() {
-      $args = array(
-          'status' => 'gf-rexp',
-          'limit' => 10,
-          'orderby' => 'date',
-          'order' => 'ASC',
-          'return' => 'ids',
-       );
-       $orders = wc_get_orders( $args );
-       foreach ( $orders as $order_id ) {
-           $this->log_it( "info", "Performing GF Scheduled Action on order " . $order_id . "." );
-           $order = wc_get_order( $order_id );
-           $status = $this->submit_order( $order );
-       }
+      $order_statuses = wc_get_order_statuses();
+      if( isset( $order_statuses['wc-gf-rexp'] ) ) {
+          if( isset( $order_statuses['wc-gf-adis'] ) ) {
+
+              $args = array(
+                  'status' => 'gf-rexp',
+                  'limit' => 10,
+                  'orderby' => 'date',
+                  'order' => 'ASC',
+                  'return' => 'ids',
+               );
+               $orders = wc_get_orders( $args );
+               foreach ( $orders as $order_id ) {
+                   $this->log_it( "info", "Performing GF Scheduled Action on order " . $order_id . "." );
+                   $order = wc_get_order( $order_id );
+                   $status = $this->submit_order( $order );
+               }
+           } else {
+               $this->log_it( "error", "Order status GF (Awaiting Dispatch) Missing. Aborting queue process!!" );
+           }
+      } else {
+           $this->log_it( "error", "Order status GF (Ready to Export) Missing. Aborting queue process!!" );
+      }
    }
 
    /**
