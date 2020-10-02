@@ -28,6 +28,10 @@ For use with BlackIce systems and automation. Untested/unsupported for other sys
 
 == Changelog ==
 
+= 0.5.2 =
+* FIX: Remove space from the end of shippingCompany field.
+* UPDATE: Update tested upto version info.
+
 = 0.5.1 =
 * FIX: Added logic to check that the GF (Ready to Export) and GF (Awaiting Dispatch) queues are present before processing.
 * Fixes a fault where stores earliest orders were returned when the status is not valid when searching for orders to process.

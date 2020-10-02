@@ -5,14 +5,14 @@
  * Plugin Name:       BlackIce GF Submitter
  * Plugin URI:        http://www.blackicetrading.com/plugin-bit-gf-submitter
  * Description:       Automatically submit GF orders via the GF API.
- * Version:           0.5.1
+ * Version:           0.5.2
  * Author:            Dan
  * Author URI:        http://www.blackicetrading.com
  * License:           GPL-2.0+
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
  * Text Domain:       bit-gf-submitter
  * WC requires at least: 4.0.0
- * WC tested up to:   4.2.0
+ * WC tested up to:   4.5.2
  */
 
 // If this file is called directly, abort.
@@ -801,7 +801,7 @@ if ( ! class_exists( 'BIT_GF_Submitter' ) ) {
            $the_submission['customerAddressPostcode'] = $order->get_billing_postcode();
            $the_submission['customerAddressCountry'] = $order->get_billing_country();
            $the_submission['shippingTo'] = $order->get_shipping_first_name() . " " . $order->get_shipping_last_name();
-           $the_submission['shippingCompanyName '] = $order->get_shipping_company();
+           $the_submission['shippingCompanyName'] = $order->get_shipping_company();
            $the_submission['shippingAddressLineOne'] = $order->get_shipping_address_1();
            $the_submission['shippingAddressLineTwo'] = $order->get_shipping_address_2();
            $the_submission['shippingAddressTown'] = $order->get_shipping_city();
